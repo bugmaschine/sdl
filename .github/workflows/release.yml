@@ -34,6 +34,7 @@ jobs:
             env-command: "| Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append"
 
     runs-on: ${{ matrix.platform }}
+
     timeout-minutes: 60
 
     steps:
@@ -44,12 +45,7 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
 
-      # Install 'cross' for Linux builds to handle cross-compilation without apt-hell
-      - name: Install Cross
-        if: ${{ matrix.platform == 'ubuntu-22.04' }}
-        run: cargo install cross --git https://github.com/cross-rs/cross
-
-      - name: Build, get version (Native)
+      - name: Build, get version
         run: |
           cargo run --release --bin sdl -- --help
           echo "SDL_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages | .[0].version')" ${{ matrix.env-command }}
@@ -59,33 +55,14 @@ jobs:
         run: |
           7z a -tzip -mm=Deflate sdl-${{ env.SDL_VERSION }}-${{ matrix.artifact-platform-name }}.zip ${{ matrix.artifact-path }}
 
-      - name: Archive (Unix Native)
+      - name: Archive (Unix)
         if: ${{ matrix.platform != 'windows-latest' }}
         run: |
           gzip -c ${{ matrix.artifact-path }} > sdl-${{ env.SDL_VERSION }}-${{ matrix.artifact-platform-name }}.gz
-
-      # --- Linux ARM v7 Build (using Cross) ---
-      - name: Build (linux-armv7-gnueabihf)
-        if: ${{ matrix.platform == 'ubuntu-22.04' }}
-        run: |
-          # No apt install needed; cross uses docker
-          cross build --release --bin sdl --target armv7-unknown-linux-gnueabihf
-          gzip -c ./target/armv7-unknown-linux-gnueabihf/release/sdl > sdl-${{ env.SDL_VERSION }}-linux-armv7-gnueabihf.gz
-
-      # --- Linux ARM 64 Build (using Cross) ---
-      - name: Build (linux-aarch64-gnu)
-        if: ${{ matrix.platform == 'ubuntu-22.04' }}
-        run: |
-          # No apt install needed; cross uses docker
-          cross build --release --bin sdl --target aarch64-unknown-linux-gnu
-          gzip -c ./target/aarch64-unknown-linux-gnu/release/sdl > sdl-${{ env.SDL_VERSION }}-linux-aarch64-gnu.gz
-
+          
       - name: Upload artifacts
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             sdl-${{ env.SDL_VERSION }}-${{ matrix.artifact-platform-name }}.zip
             sdl-${{ env.SDL_VERSION }}-${{ matrix.artifact-platform-name }}.gz
-            sdl-${{ env.SDL_VERSION }}-linux-armv7-gnueabihf.gz
-            sdl-${{ env.SDL_VERSION }}-linux-aarch64-gnu.gz
