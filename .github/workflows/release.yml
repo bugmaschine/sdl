@@ -45,15 +45,19 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
 
-      - name: Prepare for cross builds (linux targets)
+      - name: Install multiarch dependencies (linux-armhf, linux-arm64)
         if: ${{ matrix.platform == 'ubuntu-22.04' }}
         run: |
+          sudo dpkg --add-architecture armhf
+          sudo dpkg --add-architecture arm64
+          sudo sed -i'' -E 's/^(deb|deb-src) /\1 [arch=amd64,i386] /' /etc/apt/sources.list
+          echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs) main restricted universe" | sudo tee /etc/apt/sources.list.d/armhf.list
+          echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs)-security main restricted universe" | sudo tee -a /etc/apt/sources.list.d/armhf.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs) main restricted universe" | sudo tee /etc/apt/sources.list.d/arm64.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs)-security main restricted universe" | sudo tee -a /etc/apt/sources.list.d/arm64.list
           sudo apt-get update -y
-          # Install host libssl for native tooling (avoid installing foreign-arch .dev packages)
-          sudo apt-get install -yq libssl-dev pkg-config
-          # Allow pkg-config to work when cross-compiling and prefer static OpenSSL if needed
-          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-          echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
+          # Install host libssl-dev and cross-arch libssl-dev packages so both native and cross builds can find headers
+          sudo apt-get install -yq libssl-dev libssl-dev:armhf libssl-dev:arm64
 
       - name: Build, get version
         run: |
@@ -76,6 +80,15 @@ jobs:
           rustup target add armv7-unknown-linux-gnueabihf
           sudo apt-get install -yq gcc-arm-linux-gnueabihf
           export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=/usr/bin/arm-linux-gnueabihf-gcc
+
+          # Make OpenSSL headers/libs discoverable to the openssl-sys build script when cross-compiling
+          export OPENSSL_LIB_DIR=/usr/lib/arm-linux-gnueabihf
+          export OPENSSL_INCLUDE_DIR=/usr/include/arm-linux-gnueabihf
+
+          # Keep target-specific fallback env vars (if any build scripts use them)
+          export ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_LIB_DIR=/usr/lib/arm-linux-gnueabihf
+          export ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_INCLUDE_DIR=/usr/include/arm-linux-gnueabihf
+
           cargo build --release --bin sdl --target armv7-unknown-linux-gnueabihf
           gzip -c ./target/armv7-unknown-linux-gnueabihf/release/sdl > sdl-${{ env.SDL_VERSION }}-linux-armv7-gnueabihf.gz
 
@@ -85,6 +98,15 @@ jobs:
           rustup target add aarch64-unknown-linux-gnu
           sudo apt-get install -yq gcc-aarch64-linux-gnu
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/aarch64-linux-gnu-gcc
+
+          # Make OpenSSL headers/libs discoverable to the openssl-sys build script when cross-compiling
+          export OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu
+          export OPENSSL_INCLUDE_DIR=/usr/include/aarch64-linux-gnu
+
+          # Keep target-specific fallback env vars
+          export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu
+          export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR=/usr/include/aarch64-linux-gnu
+
           cargo build --release --bin sdl --target aarch64-unknown-linux-gnu
           gzip -c ./target/aarch64-unknown-linux-gnu/release/sdl > sdl-${{ env.SDL_VERSION }}-linux-aarch64-gnu.gz
 
