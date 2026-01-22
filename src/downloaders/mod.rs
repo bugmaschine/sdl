@@ -84,12 +84,16 @@ create_functions_for_extractors! {
 #[derive(Debug, Clone)]
 pub struct SeriesInfo {
     pub title: String,
+    #[allow(dead_code)]
     pub description: Option<String>,
+    #[allow(dead_code)]
     pub status: Option<SeriesStatus>,
+    #[allow(dead_code)]
     pub year: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum SeriesStatus {
     Airing,
     Completed,
@@ -326,6 +330,7 @@ pub struct EpisodeInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EpisodeNumber {
     Number(u32),
+    #[allow(dead_code)]
     String(String),
 }
 
@@ -363,6 +368,7 @@ pub mod utils {
         tokio::time::sleep(Duration::from_millis(duration)).await;
     }
 
+    #[allow(dead_code)]
     pub async fn sleep_jitter(ms_sleep: u64, ms_jitter: u64) {
         let min = ms_sleep.saturating_sub(ms_jitter);
         let max = ms_sleep.saturating_add(ms_jitter);

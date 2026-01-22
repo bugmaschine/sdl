@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+#[allow(unused_imports)]
 use std::env::{Args, args};
 use std::time::Duration;
 
@@ -13,6 +14,7 @@ use super::{
     AllOrSpecific, DownloadRequest, DownloadSettings, DownloadTask, EpisodeInfo, EpisodeNumber, ExtractorMatch,
     InstantiatedDownloader, Language, SeriesInfo, VideoType,
 };
+#[allow(unused_imports)]
 use crate::download::{self, get_episode_name};
 use crate::downloaders::utils::sleep_random;
 use crate::downloaders::{Downloader, EpisodesRequest};

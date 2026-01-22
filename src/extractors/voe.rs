@@ -12,7 +12,7 @@ impl Extractor for Voe {
     const NAMES: &'static [&'static str] = &["Voe"];
 
     fn supported_from() -> SupportedFrom {
-        SupportedFrom::all()
+        SupportedFrom::all_bits()
     }
 
     async fn supports_url(_url: &str) -> Option<bool> {

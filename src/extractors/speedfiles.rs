@@ -13,7 +13,7 @@ impl Extractor for Speedfiles {
     const NAMES: &'static [&'static str] = &["Speedfiles"];
 
     fn supported_from() -> SupportedFrom {
-        SupportedFrom::all()
+        SupportedFrom::all_bits()
     }
 
     async fn supports_url(url: &str) -> Option<bool> {

@@ -14,7 +14,7 @@ impl Extractor for Filemoon {
     const NAMES: &'static [&'static str] = &["Filemoon", "MoonF"];
 
     fn supported_from() -> SupportedFrom {
-        SupportedFrom::all()
+        SupportedFrom::all_bits()
     }
 
     async fn supports_url(_url: &str) -> Option<bool> {

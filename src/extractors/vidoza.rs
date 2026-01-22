@@ -12,7 +12,7 @@ impl Extractor for Vidoza {
     const NAMES: &'static [&'static str] = &["Vidoza"];
 
     fn supported_from() -> SupportedFrom {
-        SupportedFrom::all()
+        SupportedFrom::all_bits()
     }
 
     async fn supports_url(url: &str) -> Option<bool> {

@@ -13,7 +13,7 @@ impl Extractor for Streamtape {
     const NAMES: &'static [&'static str] = &["Streamtape"];
 
     fn supported_from() -> SupportedFrom {
-        SupportedFrom::all()
+        SupportedFrom::all_bits()
     }
 
     async fn supports_url(url: &str) -> Option<bool> {

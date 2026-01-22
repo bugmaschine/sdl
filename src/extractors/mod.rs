@@ -168,6 +168,7 @@ macro_rules! create_functions_for_extractors {
             exists_extractor_for_url!(url, extractor, $($ext),*)
         }
 
+        #[allow(dead_code)]
         pub fn extractor_supports_source(extractor: &str) -> Option<bool> {
             extractor_supports_source!(extractor, $($ext),*)
         }
@@ -184,6 +185,7 @@ macro_rules! create_functions_for_extractors {
             extract_video_url_with_extractor_from_url_unchecked!(url, extractor, user_agent, referer, $($ext),*)
         }
 
+        #[allow(dead_code)]
         pub async fn extract_video_url_with_extractor_from_source(source: String, extractor: &str) -> Option<Result<ExtractedVideo, anyhow::Error>> {
             extract_video_url_with_extractor_from_source!(source, extractor, $($ext),*)
         }
@@ -262,6 +264,7 @@ pub enum ExtractFrom {
         user_agent: Option<String>,
         referer: Option<String>,
     },
+    #[allow(dead_code)]
     Source(String),
 }
 
@@ -418,6 +421,7 @@ pub mod utils {
         Some(replaced.to_string())
     }
 
+    #[allow(dead_code)]
     pub fn caesar(input: &str, alphabet: &str, shift: i32) -> String {
         let length = alphabet.len();
         let mut output = String::new();
@@ -435,7 +439,8 @@ pub mod utils {
         output
     }
 
-    pub fn rot47(input: &str) -> String {
+    #[allow(dead_code)]
+pub fn rot47(input: &str) -> String {
         caesar(
             input,
             "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",

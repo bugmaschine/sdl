@@ -12,7 +12,7 @@ impl Extractor for Vidmoly {
     const NAMES: &'static [&'static str] = &["Vidmoly"];
 
     fn supported_from() -> SupportedFrom {
-        SupportedFrom::all()
+        SupportedFrom::all_bits()
     }
 
     async fn supports_url(url: &str) -> Option<bool> {

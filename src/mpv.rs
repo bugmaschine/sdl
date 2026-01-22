@@ -3,10 +3,11 @@ use std::time::Duration;
 
 use anyhow::Context;
 use futures_util::StreamExt;
+use interprocess::local_socket::prelude::*;
+use interprocess::local_socket::traits::tokio::Stream;
 use rand::Rng;
 use tokio::io::AsyncWriteExt;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tokio_util::compat::FuturesAsyncWriteCompatExt;
 
 use crate::download::get_episode_name;
 use crate::downloaders::{DownloadTask, SeriesInfo};
@@ -105,11 +106,20 @@ async fn run_mpv_ipc(
     series_info: SeriesInfo,
 ) -> Result<(), anyhow::Error> {
     // Try for 10 seconds to connect to IPC
-    let ipc = {
+    let ipc: interprocess::local_socket::tokio::Stream = {
         let mut tries = 0u8;
 
         loop {
-            match interprocess::local_socket::tokio::LocalSocketStream::connect(ipc_path_rs).await {
+            let name = if cfg!(unix) {
+                ipc_path_rs
+                    .to_fs_name::<interprocess::local_socket::GenericFilePath>()
+                    .context("failed to parse ipc path")?
+            } else {
+                ipc_path_rs
+                    .to_ns_name::<interprocess::local_socket::GenericNamespaced>()
+                    .context("failed to parse ipc path")?
+            };
+            match interprocess::local_socket::tokio::Stream::connect(name).await {
                 Ok(ipc) => break ipc,
                 Err(err) => {
                     tries += 1;
@@ -123,8 +133,7 @@ async fn run_mpv_ipc(
             }
         }
     };
-    let (_, ipc_write) = ipc.into_split();
-    let mut ipc_write = ipc_write.compat_write();
+    let (_, mut ipc_write) = ipc.split();
 
     while let Some(task) = rx_stream.next().await {
         let url = task.download_url;

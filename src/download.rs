@@ -32,7 +32,7 @@ use crate::logger::log_wrapper::SetLogWrapper;
 use crate::utils::remove_file_ignore_not_exists;
 
 pub(crate) const DEFAULT_USER_AGENT: &str =
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36";
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36";
 
 pub(crate) static DEFAULT_RETRY_CLIENT_NO_REDIRECT: Lazy<reqwest_partial_retry::Client> = Lazy::new(|| {
     reqwest::Client::builder()
@@ -1203,6 +1203,7 @@ pub(crate) async fn get_response_bytes(response: reqwest::Response) -> Result<by
     response.bytes().await.context("failed to get bytes of response body")
 }
 
+#[allow(dead_code)]
 pub(crate) async fn get_page_bytes<U: IntoUrl>(
     url: U,
     user_agent: Option<&str>,

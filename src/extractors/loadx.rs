@@ -15,7 +15,7 @@ impl Extractor for LoadX {
     const NAMES: &'static [&'static str] = &["LoadX"];
 
     fn supported_from() -> SupportedFrom {
-        SupportedFrom::all()
+        SupportedFrom::all_bits()
     }
 
     async fn supports_url(url: &str) -> Option<bool> {

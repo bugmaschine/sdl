@@ -1,7 +1,12 @@
 # sdl
-Download multiple episodes from streaming sites
+Download multiple episodes from streaming sites.
 
-This is a fork of a pull request with some added features.
+This is a fork of a pull request with some added features and is meant for my own workflow.
+Things that i might not value and are too much work to support will be removed, unless someone else wants to support them.
+
+Maybe i'll do a rewrite into Golang or something else in the future. 
+
+mpv support is broken, i haven't looked into it yet.
 
 ## Supported sites
 ### German

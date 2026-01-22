@@ -13,6 +13,8 @@ use thirtyfour::ChromiumLikeCapabilities;
 use crate::download::{self, Downloader, InternalDownloadTask};
 use crate::utils::{remove_dir_all_ignore_not_exists, remove_file_ignore_not_exists};
 
+use zip_extensions::zip_extract::zip_extract;
+
 const UBLOCK_GITHUB_API_URL: &str = "https://api.github.com/repos/uBlockOrigin/uBOL-home/releases/latest";
 
 pub(crate) struct ChromeDriver<'a> {
@@ -100,7 +102,7 @@ impl<'a> ChromeDriver<'a> {
                     caps.clone(),
                     WebDriverConfigBuilder::new()
                         .poller(Arc::new(ElementPollerNoWait))
-                        .build(),
+                        .build()?,
                 )
                 .await
                 {
@@ -283,7 +285,7 @@ impl<'a> ChromeDriver<'a> {
             .await
             .context("failed to create uBlock Origin extension directory")?;
 
-        if let Err(err) = zip_extensions::zip_extract(&ublock_download_file_path, ublock_dir) {
+        if let Err(err) = zip_extract(&ublock_download_file_path, ublock_dir) {
             let _ = tokio::fs::remove_file(&current_version_file).await;
             let _ = tokio::fs::remove_dir_all(ublock_dir).await;
             return Err(err).context("failed to extract uBlock Origin asset file");
