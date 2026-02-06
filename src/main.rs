@@ -7,11 +7,10 @@ use chrono::Local;
 use clap::Parser;
 use cli::{Args, Extractor};
 use download::{DownloadManager, Downloader, InternalDownloadTask};
-use downloaders::{DownloadRequest, DownloadTask, InstantiatedDownloader};
+use downloaders::{DownloadRequest, InstantiatedDownloader};
 use extractors::{extract_video_url, extract_video_url_with_extractor_from_url};
 use ffmpeg::Ffmpeg;
 use logger::log_wrapper::{LogWrapper, SetLogWrapper};
-use tokio_stream::wrappers::UnboundedReceiverStream;
 
 pub(crate) mod chrome;
 pub(crate) mod cli;
@@ -21,7 +20,6 @@ pub(crate) mod downloaders;
 pub(crate) mod extractors;
 pub(crate) mod ffmpeg;
 pub(crate) mod logger;
-pub(crate) mod mpv;
 pub(crate) mod utils;
 
 #[tokio::main(flavor = "current_thread")]
@@ -178,19 +176,16 @@ async fn do_after_chrome_driver(
         Some(driver) => chrome::get_user_agent(driver).await,
         None => None,
     };
-    let episodes_downloader = if !args.mpv {
-        let limiter = async_speed_limit::Limiter::new(args.limit_rate);
-        Some(Downloader::new(
-            &mut log_wrapper,
-            limiter,
-            debug,
-            Some(ffmpeg_path),
-            user_agent,
-            Some(args.retries.inner().copied()),
-        ))
-    } else {
-        None
-    };
+    
+    let limiter = async_speed_limit::Limiter::new(args.limit_rate);
+    let episodes_downloader = Downloader::new(
+        &mut log_wrapper,
+        limiter,
+        debug,
+        Some(ffmpeg_path),
+        user_agent,
+        Some(args.retries.inner().copied()),
+    );
 
     if let Some(extractor) = extractor {
         let extractor_result = if let Extractor::Name(extractor_name) = extractor {
@@ -249,31 +244,22 @@ async fn do_after_chrome_driver(
             }
         };
 
-        let result = if let Some(episodes_downloader) = episodes_downloader {
-            let download_future = episodes_downloader.download_to_file(
-                InternalDownloadTask::new(output_path, extracted_video.url)
-                    .output_path_has_extension(false)
-                    .skip_existing(args.skip_existing)
-                    .referer(extracted_video.referer),
-            );
+        let download_future = episodes_downloader.download_to_file(
+            InternalDownloadTask::new(output_path, extracted_video.url)
+                .output_path_has_extension(false)
+                .skip_existing(args.skip_existing)
+                .referer(extracted_video.referer),
+        );
 
-            tokio::select! {
-                biased;
+        let result = tokio::select! {
+            biased;
 
-                result = download_future => result,
-                _ = episodes_downloader.tick() => unreachable!(),
-            }
-        } else {
-            mpv::start_mpv(&extracted_video.url, debug)
+            result = download_future => result,
+            _ = episodes_downloader.tick() => unreachable!(),
         };
 
         if let Err(err) = result {
-            if !args.mpv {
-                log::error!("Failed download: {:#}", err);
-            } else {
-                log::error!("Failed mpv: {:#}", err);
-            }
-
+            log::error!("Failed download: {:#}", err);
             return true;
         }
     } else {
@@ -298,42 +284,17 @@ async fn do_after_chrome_driver(
             save_directory: Some(save_directory.clone()),
         };
 
-        if let Some(episodes_downloader) = episodes_downloader {
-            let (download_manager, sender) =
-                DownloadManager::new(episodes_downloader, max_concurrent, save_directory, series_info, skip_existing);
+        let (download_manager, sender) =
+            DownloadManager::new(episodes_downloader, max_concurrent, save_directory, series_info, skip_existing);
 
-            let (downloader_result, _) = tokio::join!(
-                series_downloader.download(download_request, download_settings, sender),
-                download_manager.progress_downloads(),
-            );
+        let (downloader_result, _) = tokio::join!(
+            series_downloader.download(download_request, download_settings, sender),
+            download_manager.progress_downloads(),
+        );
 
-            if let Err(err) = downloader_result {
-                log::error!("Failed to download series: {:#}", err);
-                return true;
-            }
-        } else {
-            let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<DownloadTask>();
-            let rx_stream = UnboundedReceiverStream::new(rx);
-
-            let mpv_future = mpv::start_mpv_with_ipc(rx_stream, series_info, debug);
-            tokio::pin!(mpv_future);
-
-            let (downloader_errored, mpv_result) = tokio::select! {
-                mpv_result = &mut mpv_future => (false, mpv_result),
-                downloader_result = series_downloader.download(download_request, download_settings, tx) => {
-                    if let Err(err) = &downloader_result {
-                        log::error!("Failed to download series: {:#}", err);
-                    }
-
-                    (downloader_result.is_err(), mpv_future.await)
-                }
-            };
-
-            if let Err(err) = &mpv_result {
-                log::error!("Failed mpv: {:#}", err);
-            }
-
-            return downloader_errored || mpv_result.is_err();
+        if let Err(err) = downloader_result {
+            log::error!("Failed to download series: {:#}", err);
+            return true;
         }
     }
 

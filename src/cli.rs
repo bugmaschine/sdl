@@ -61,10 +61,6 @@ pub(crate) struct Args {
     #[arg(long, default_value_t = 60 * 1000, value_name = "MILLISECONDS")]
     pub(crate) ddos_wait_ms: u32,
 
-    /// Play in mpv
-    #[arg(long, conflicts_with_all = ["concurrent_downloads", "retries", "limit_rate"])]
-    pub(crate) mpv: bool,
-
     /// Skip existing files when downloading
     #[arg(long)]
     pub(crate) skip_existing: bool,

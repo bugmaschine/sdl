@@ -6,8 +6,7 @@ Things that i might not value and are too much work to support will be removed, 
 
 Maybe i'll do a rewrite into Golang or something else in the future. 
 
-mpv support is broken, i haven't looked into it yet.
-
+mpv support is broken, and thus it was removed, because i don't want to suport a feature i dont use.
 ## Supported sites
 ### German
 * [AniWorld](https://aniworld.to)
@@ -119,8 +118,6 @@ Options:
           Amount of requests before waiting [default: 4]
       --ddos-wait-ms <MILLISECONDS>
           The duration in milliseconds to wait [default: 60000]
-      --mpv
-          Play in mpv
       --skip-existing
           Skip existing files when downloading
   -d, --debug
