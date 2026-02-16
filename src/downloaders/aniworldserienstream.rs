@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 #[allow(unused_imports)]
-use std::env::{Args, args};
+use std::env::{args, Args};
 use std::time::Duration;
 
 use anyhow::Context;
@@ -200,6 +200,7 @@ struct Scraper<'driver, 'url, F: FnMut() -> Duration> {
     settings: DownloadSettings<F>,
     sender: UnboundedSender<DownloadTask>,
     language_selectors: Vec<(VideoType, By)>,
+    directory_cache: Option<crate::download::DirectoryCache>,
 }
 
 impl<'driver, 'url, F: FnMut() -> Duration> Scraper<'driver, 'url, F> {
@@ -220,17 +221,24 @@ impl<'driver, 'url, F: FnMut() -> Duration> Scraper<'driver, 'url, F> {
             settings,
             sender,
             language_selectors,
+            directory_cache: None,
         })
     }
 
     async fn scrape(&mut self) -> Result<(), anyhow::Error> {
         let episodes_request = std::mem::replace(&mut self.request.episodes, EpisodesRequest::Unspecified);
 
+        if self.settings.skip_existing {
+            if let Some(save_directory) = &self.request.save_directory {
+                self.directory_cache = Some(crate::download::DirectoryCache::new(save_directory).await);
+            }
+        }
+
         match episodes_request {
             EpisodesRequest::Unspecified => {
                 if let Some(season) = &self.parsed_url.season {
                     if let Some(episode) = season.episode {
-                        self.scrape_episode(season.season, episode, true).await
+                        self.scrape_episode(season.season, episode, true, None).await
                     } else {
                         self.scrape_season(season.season, &AllOrSpecific::All).await
                     }
@@ -256,10 +264,9 @@ impl<'driver, 'url, F: FnMut() -> Duration> Scraper<'driver, 'url, F> {
         self.settings.maybe_ddos_wait().await;
 
         let seasons_info = self.get_seasons_info().await.context("failed to get seasons info")?;
-        let season_start = if seasons_info.has_season_zero { 0 } else { 1 };
         let mut got_error = false;
 
-        for season in season_start..=seasons_info.max_season {
+        for season in seasons_info.seasons {
             if seasons.contains(season) {
                 if let Err(err) = self.scrape_season(season, &AllOrSpecific::All).await {
                     log::warn!("Failed to download S{season:02}: {err:#}");
@@ -294,19 +301,20 @@ impl<'driver, 'url, F: FnMut() -> Duration> Scraper<'driver, 'url, F> {
             self.settings.maybe_ddos_wait().await;
         }
 
-        let max_episodes = self
+        let episode_info = self
             .get_episode_info(season, 1)
             .await
-            .context("failed to get episode info")?
-            .max_episode_number_in_season
-            .context("failed to get maximum episode number in season")?;
+            .context("failed to get episode info")?;
 
         let mut goto = false;
         let mut got_error = false;
 
-        for episode in 1..=max_episodes {
+        for episode in episode_info.episodes {
             if episodes.contains(episode) {
-                if let Err(err) = self.scrape_episode(season, episode, goto).await {
+                if let Err(err) = self
+                    .scrape_episode(season, episode, goto, episode_info.max_episode_number_in_season)
+                    .await
+                {
                     log::warn!("Failed to get video url for S{season:02}E{episode:03}: {err:#}");
                     got_error = true;
                 }
@@ -322,32 +330,136 @@ impl<'driver, 'url, F: FnMut() -> Duration> Scraper<'driver, 'url, F> {
         Ok(())
     }
 
-    async fn scrape_episode(&mut self, season: u32, episode: u32, goto: bool) -> Result<(), anyhow::Error> {
+    async fn scrape_episode(
+        &mut self,
+        season: u32,
+        episode: u32,
+        goto: bool,
+        max_episode_number_in_season: Option<u32>,
+    ) -> Result<(), anyhow::Error> {
         if self.settings.skip_existing {
             if let (Some(series_title), Some(save_directory)) =
                 (&self.request.series_title, &self.request.save_directory)
             {
                 let anime_name_for_file = download::prepare_series_name_for_file(series_title);
 
+                let mut all_exist = true;
+                let mut any_variant_exists = false; // New variable
                 for (video_type, _) in &self.language_selectors {
-                    let episode_info = EpisodeInfo {
-                        name: None,
-                        season_number: Some(season),
-                        episode_number: EpisodeNumber::Number(episode),
-                        max_episode_number_in_season: None,
-                    };
+                    let mut language_exists = false;
 
-                    let output_name = download::get_episode_name(
-                        anime_name_for_file.as_deref(),
-                        Some(video_type),
-                        &episode_info,
-                        false,
-                    );
+                    // Check multiple variants of max_episode_number_in_season to account for
+                    // different padding strategies (e.g. E1 vs E01) depending on when it was downloaded.
+                    // 1. Current actual max (e.g. E01 if max is 13)
+                    // 2. Forced 1 digit (Some(1) -> E1)
+                    // 3. Forced 2 digits (Some(10) or None -> E01)
+                    let variants = [max_episode_number_in_season, Some(1), Some(10)];
 
-                    if download::check_if_episode_exists(save_directory, &output_name).await {
-                        log::info!("skipping scraping for {}: file already exists", output_name);
-                        return Ok(());
+                    for variant in variants {
+                        let episode_info = EpisodeInfo {
+                            name: None,
+                            season_number: Some(season),
+                            episode_number: EpisodeNumber::Number(episode),
+                            max_episode_number_in_season: variant,
+                            episodes: Vec::new(),
+                        };
+
+                        let output_name = download::get_episode_name(
+                            anime_name_for_file.as_deref(),
+                            Some(video_type),
+                            &episode_info,
+                            false,
+                        );
+
+                        let exists = if let Some(cache) = &self.directory_cache {
+                            let in_cache = cache.check_if_episode_exists(&output_name);
+                            log::debug!(
+                                "Checking cache for '{}' (variant: {:?}): {}",
+                                output_name,
+                                variant,
+                                in_cache
+                            );
+                            in_cache
+                        } else {
+                            let on_disk = download::check_if_episode_exists(save_directory, &output_name).await;
+                            log::debug!(
+                                "Checking disk for '{}' (variant: {:?}): {}",
+                                output_name,
+                                variant,
+                                on_disk
+                            );
+                            on_disk
+                        };
+
+                        if exists {
+                            log::debug!("Found '{}' in cache/disk", output_name);
+                            language_exists = true;
+                            // Found a valid file for this language.
+                            break;
+                        }
                     }
+
+                    if language_exists {
+                        // If we found a file for this language, and the user didn't ask for a specific language
+                        // (meaning they are okay with "Best Available"), we can stop looking for other languages.
+                        // We consider the episode "done".
+                        //
+                        // However, if strict mode is ever implemented where they want ALL available languages,
+                        // this would be wrong. But for now, "Best Available" implies we just need one good file.
+                        //
+                        // Actually, wait. `language_selectors` contains prioritized list.
+                        // If we found the HIGHEST priority one (e.g. GerDub), we should definitely stop.
+                        // But what if we found a lower priority one (e.g. GerSub) but want Dub if available?
+                        //
+                        // Current behavior of `convert_to_non_unspecified_video_types` returns ALL supported types.
+                        // If we are in "Unspecified" mode, we iterate through them.
+                        // If we find the first one (highest priority), we are good.
+                        //
+                        // Let's assume if we find *any* of the preferred languages, we are good to skip.
+                        // This matches the user's expectation of "I have the Dub, don't download the Sub".
+                        if matches!(self.request.language, VideoType::Unspecified(_)) {
+                            any_variant_exists = true;
+                            // Found a valid file for this language.
+                            break;
+                        }
+                    }
+
+                    if !language_exists {
+                        log::debug!(
+                            "Missing language variant for S{:02}E{:03}, video_type: {:?}",
+                            season,
+                            episode,
+                            video_type
+                        );
+                        all_exist = false;
+                        // If we are in unspecified mode, we might still find another variant later in the loop (e.g. we failed to find Sub but might find Dub next).
+                        // Wait, `language_selectors` loop iterates over types.
+                        // If we fail one type, we shouldn't necessarily break `all_exist` if we only need ANY.
+
+                        if !matches!(self.request.language, VideoType::Unspecified(_)) {
+                            break;
+                        }
+                    }
+                }
+
+                if matches!(self.request.language, VideoType::Unspecified(_)) {
+                    if any_variant_exists {
+                        log::info!(
+                            "skipping scraping for S{:02}E{:03}: file already exists",
+                            season,
+                            episode
+                        );
+                        return Ok(());
+                    } else {
+                        log::debug!("Not skipping S{:02}E{:03} because no files exist", season, episode);
+                    }
+                } else if all_exist {
+                    log::info!(
+                        "skipping scraping for S{:02}E{:03}: all requested language files already exist",
+                        season,
+                        episode
+                    );
+                    return Ok(());
                 }
             }
         }
@@ -424,15 +536,14 @@ impl<'driver, 'url, F: FnMut() -> Duration> Scraper<'driver, 'url, F> {
             .all_from_selector()
             .await
             .unwrap();
-        let mut has_movies = false;
-        let mut max_season = None;
+        let mut seasons_list = Vec::new();
 
         for season in seasons {
             let text = season.text().await.unwrap();
             let text = text.trim();
 
             if text.eq_ignore_ascii_case("Filme") {
-                has_movies = true;
+                seasons_list.push(0);
                 continue;
             }
 
@@ -440,17 +551,12 @@ impl<'driver, 'url, F: FnMut() -> Duration> Scraper<'driver, 'url, F> {
                 continue;
             };
 
-            max_season = match max_season {
-                Some(old_max) => Some(number.max(old_max)),
-                None => Some(number),
-            };
+            seasons_list.push(number);
         }
 
-        if let Some(max_season) = max_season {
-            Ok(SeasonsInfo {
-                has_season_zero: has_movies,
-                max_season,
-            })
+        if !seasons_list.is_empty() {
+            seasons_list.sort_unstable();
+            Ok(SeasonsInfo { seasons: seasons_list })
         } else {
             anyhow::bail!("failed to find max season");
         }
@@ -477,7 +583,7 @@ impl<'driver, 'url, F: FnMut() -> Duration> Scraper<'driver, 'url, F> {
             .all_from_selector()
             .await
             .unwrap();
-        let mut max_episode = None;
+        let mut episodes_list = Vec::new();
 
         for episode in episodes {
             let number_text = episode.text().await.unwrap();
@@ -487,17 +593,17 @@ impl<'driver, 'url, F: FnMut() -> Duration> Scraper<'driver, 'url, F> {
                 continue;
             };
 
-            max_episode = match max_episode {
-                Some(old_max) => Some(number.max(old_max)),
-                None => Some(number),
-            };
+            episodes_list.push(number);
         }
+
+        episodes_list.sort_unstable();
 
         Some(EpisodeInfo {
             name: episode_title,
             season_number: Some(current_season),
             episode_number: EpisodeNumber::Number(current_episode),
-            max_episode_number_in_season: max_episode,
+            max_episode_number_in_season: episodes_list.iter().copied().max(),
+            episodes: episodes_list,
         })
     }
 
@@ -615,8 +721,7 @@ impl<'driver, 'url, F: FnMut() -> Duration> Scraper<'driver, 'url, F> {
 
 #[derive(Debug, Clone)]
 struct SeasonsInfo {
-    has_season_zero: bool,
-    max_season: u32,
+    seasons: Vec<u32>,
 }
 
 #[cfg(test)]

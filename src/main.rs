@@ -176,7 +176,7 @@ async fn do_after_chrome_driver(
         Some(driver) => chrome::get_user_agent(driver).await,
         None => None,
     };
-    
+
     let limiter = async_speed_limit::Limiter::new(args.limit_rate);
     let episodes_downloader = Downloader::new(
         &mut log_wrapper,
@@ -249,6 +249,7 @@ async fn do_after_chrome_driver(
                 .output_path_has_extension(false)
                 .skip_existing(args.skip_existing)
                 .referer(extracted_video.referer),
+            None,
         );
 
         let result = tokio::select! {
@@ -284,8 +285,13 @@ async fn do_after_chrome_driver(
             save_directory: Some(save_directory.clone()),
         };
 
-        let (download_manager, sender) =
-            DownloadManager::new(episodes_downloader, max_concurrent, save_directory, series_info, skip_existing);
+        let (download_manager, sender) = DownloadManager::new(
+            episodes_downloader,
+            max_concurrent,
+            save_directory,
+            series_info,
+            skip_existing,
+        );
 
         let (downloader_result, _) = tokio::join!(
             series_downloader.download(download_request, download_settings, sender),

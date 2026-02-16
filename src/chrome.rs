@@ -16,7 +16,8 @@ use crate::utils::{remove_dir_all_ignore_not_exists, remove_file_ignore_not_exis
 use zip_extensions::zip_extract::zip_extract;
 
 const UBLOCK_GITHUB_API_URL: &str = "https://api.github.com/repos/uBlockOrigin/uBOL-home/releases/latest";
-const UBLOCK_FALLBACK_DOWNLOAD_URL: &str = "https://github.com/uBlockOrigin/uBOL-home/releases/download/2026.201.1924/uBOLite_2026.201.1924.chromium.zip";
+const UBLOCK_FALLBACK_DOWNLOAD_URL: &str =
+    "https://github.com/uBlockOrigin/uBOL-home/releases/download/2026.201.1924/uBOLite_2026.201.1924.chromium.zip";
 
 pub(crate) struct ChromeDriver<'a> {
     data_dir: &'a Path,
@@ -216,11 +217,17 @@ impl<'a> ChromeDriver<'a> {
             Ok(json) => {
                 let tag = json.get("tag_name").and_then(|v| v.as_str()).map(|s| s.to_string());
                 let asset_url = json.get("assets").and_then(|v| v.as_array()).and_then(|assets| {
-                    assets.iter().find(|a| a.get("name").and_then(|n| n.as_str()).map_or(false, |n| n.contains("chromium")))
+                    assets
+                        .iter()
+                        .find(|a| {
+                            a.get("name")
+                                .and_then(|n| n.as_str())
+                                .map_or(false, |n| n.contains("chromium"))
+                        })
                         .and_then(|a| a.get("browser_download_url").and_then(|u| u.as_str()))
                         .map(|s| s.to_string())
                 });
-                
+
                 if let (Some(tag), Some(url)) = (tag, asset_url) {
                     Some((tag, url))
                 } else {
@@ -229,7 +236,10 @@ impl<'a> ChromeDriver<'a> {
                 }
             }
             Err(err) => {
-                log::warn!("Failed to fetch latest uBlock from GitHub: {:#}. Using fallback URL...", err);
+                log::warn!(
+                    "Failed to fetch latest uBlock from GitHub: {:#}. Using fallback URL...",
+                    err
+                );
                 None
             }
         };
@@ -259,6 +269,7 @@ impl<'a> ChromeDriver<'a> {
                 InternalDownloadTask::new(ublock_download_file_path.clone(), download_url)
                     .overwrite_file(true)
                     .custom_message(Some("Downloading uBlock Origin".to_string())),
+                None,
             )
             .await?;
 
@@ -277,7 +288,7 @@ impl<'a> ChromeDriver<'a> {
         }
 
         let _ = tokio::fs::remove_file(&ublock_download_file_path).await;
-        
+
         // Save the version (or "fallback") so we don't re-download every time if the API stays down
         tokio::fs::write(&current_version_file, &version_to_install)
             .await

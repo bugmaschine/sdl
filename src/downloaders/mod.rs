@@ -325,6 +325,7 @@ pub struct EpisodeInfo {
     pub season_number: Option<u32>,
     pub episode_number: EpisodeNumber,
     pub max_episode_number_in_season: Option<u32>,
+    pub episodes: Vec<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

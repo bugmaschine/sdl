@@ -88,6 +88,8 @@ impl DownloadManager {
 
     pub(crate) async fn progress_downloads(self) {
         let anime_name_for_file = prepare_series_name_for_file(&self.series_info.title);
+        let directory_cache = DirectoryCache::new(&self.save_directory).await;
+
         let download_future = self
             .rx_stream
             .for_each_concurrent(self.max_concurrent, |download_task| {
@@ -95,6 +97,7 @@ impl DownloadManager {
                 let save_directory = self.save_directory.clone();
                 let skip_existing = self.skip_existing;
                 let downloader_borrowed = &self.downloader;
+                let directory_cache = &directory_cache;
 
                 async move {
                     let output_name = get_episode_name(
@@ -107,7 +110,7 @@ impl DownloadManager {
 
                     // If user requested skipping existing files, check common output names
                     if skip_existing {
-                        if check_if_episode_exists(&save_directory, &output_name).await {
+                        if directory_cache.check_if_episode_exists(&output_name) {
                             log::info!("skipping download for {}: file already exists", output_name);
                             return;
                         }
@@ -118,7 +121,10 @@ impl DownloadManager {
                         .skip_existing(skip_existing)
                         .referer(download_task.referer);
 
-                    if let Err(err) = downloader_borrowed.download_to_file(internal_task).await {
+                    if let Err(err) = downloader_borrowed
+                        .download_to_file(internal_task, Some(directory_cache))
+                        .await
+                    {
                         log::warn!("Failed download of {}: {:#}", output_name, err);
                     }
                 }
@@ -272,11 +278,22 @@ impl Downloader {
         }
     }
 
-    pub(crate) async fn download_to_file(&self, task: InternalDownloadTask) -> Result<(), anyhow::Error> {
+    pub(crate) async fn download_to_file(
+        &self,
+        task: InternalDownloadTask,
+        directory_cache: Option<&DirectoryCache>,
+    ) -> Result<(), anyhow::Error> {
         if task.skip_existing {
             if let Some(output_name) = task.output_path.file_name().and_then(|n| n.to_str()) {
                 let parent = task.output_path.parent().unwrap_or(std::path::Path::new("."));
-                if check_if_episode_exists(&parent.to_path_buf(), output_name).await {
+
+                let exists = if let Some(directory_cache) = directory_cache {
+                    directory_cache.check_if_episode_exists(output_name)
+                } else {
+                    check_if_episode_exists(&parent.to_path_buf(), output_name).await
+                };
+
+                if exists {
                     log::info!("skipping download for {}: file already exists", output_name);
                     return Ok(());
                 }
@@ -1369,6 +1386,40 @@ mod retry {
             }
             None
         }
+    }
+}
+
+pub(crate) struct DirectoryCache {
+    files: std::collections::HashSet<String>,
+}
+
+impl DirectoryCache {
+    pub(crate) async fn new(directory: &std::path::Path) -> Self {
+        let mut files = std::collections::HashSet::new();
+        if let Ok(mut rd) = tokio::fs::read_dir(directory).await {
+            while let Ok(Some(entry)) = rd.next_entry().await {
+                if let Ok(name) = entry.file_name().into_string() {
+                    files.insert(name);
+                }
+            }
+        }
+        Self { files }
+    }
+
+    pub(crate) fn check_if_episode_exists(&self, output_name: &str) -> bool {
+        let mp4_name = format!("{}.mp4", output_name);
+        let ts_name = format!("{}.ts", output_name);
+
+        if self.files.contains(&mp4_name) || self.files.contains(&ts_name) {
+            return true;
+        }
+
+        let dot_prefix = format!("{}.", output_name);
+        let title_prefix = format!("{} - ", output_name);
+
+        self.files
+            .iter()
+            .any(|name| name.starts_with(&dot_prefix) || name.starts_with(&title_prefix))
     }
 }
 

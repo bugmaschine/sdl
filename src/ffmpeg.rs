@@ -122,7 +122,7 @@ impl Ffmpeg {
             .overwrite_file(true)
             .custom_message(Some("Downloading FFmpeg".to_string()));
 
-        downloader.download_to_file(download_task).await?;
+        downloader.download_to_file(download_task, None).await?;
 
         let gzip_file = tokio::fs::OpenOptions::new()
             .read(true)
