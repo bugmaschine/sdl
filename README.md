@@ -1,13 +1,11 @@
 # Go Aniworld Downloader (gad)
-Download multiple episodes from streaming sites.
 
-This is a fork of a pull request with some added features and is meant for my own workflow.
-Things that i might not value and are too much work to support will be removed, unless someone else wants to support them.
+This is a fork of a pull request which was rewritten in go, as i don't use rust that often.
 
 ## Supported sites
 ### German
 * [AniWorld](https://aniworld.to)
-* [S.to](https://s.to)
+* ~~[S.to](https://s.to)~~ — I do not support s.to because I don't use it.
 
 ## Supported extractors
 * Doodstream
@@ -106,7 +104,9 @@ Flags:
       --type string              Only download specific video type (raw, dub, sub)
   -t, --type-language string     Shorthand for language and video type
 ```
+## Scripting
 
+You can use `gad` in scripts to keep your library up to date. `gad` will return code 0 if everything went without a problem.
 ## Notes
 If FFmpeg and ChromeDriver are not found in the `PATH`, they will be downloaded automatically.
 
@@ -119,4 +119,4 @@ The resulting executable is found at `gad`.
 
 ## Thanks
 * [aniworld_scraper](https://github.com/wolfswolke/aniworld_scraper) for the inspiration and showing how it could be done
-* [sdl](https://github.com/Funami580/sdl)
+* [sdl](https://github.com/Funami580/sdl) for provinding the original rust codebase and making this fork possible
