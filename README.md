@@ -1,11 +1,11 @@
 # Go Aniworld Downloader (gad)
 
-This is a fork of a pull request which was rewritten in go, as i don't use rust that often.
+This is a fork of a pull request which I rewrote in go, as I don't use rust that often. It's mostly meant for my own use, as i need some custom features.
 
 ## Supported sites
 ### German
 * [AniWorld](https://aniworld.to)
-* ~~[S.to](https://s.to)~~ — I do not support s.to because I don't use it.
+* ~~[S.to](https://s.to)~~ — I do not support s.to because I don't use it. The original [sdl](https://github.com/Funami580/sdl) does support it though.
 
 ## Supported extractors
 * Doodstream
@@ -18,6 +18,19 @@ This is a fork of a pull request which was rewritten in go, as i don't use rust 
 * Voe
 
 ## Usage
+
+### Downloading from a queue file
+```bash
+gad -q queue.txt --skip-existing
+```
+
+Queue file contents (you can comment out lines and it will be ignored):
+```
+https://aniworld.to/anime/stream/you-and-i-are-polar-opposites
+#https://aniworld.to/anime/stream/spy-x-family
+https://aniworld.to/anime/stream/yuruyuri-happy-go-lily
+```
+
 ### Downloading a single episode
 By URL:
 ```bash
@@ -57,12 +70,12 @@ gad 'https://aniworld.to/anime/stream/yuruyuri-happy-go-lily'
 
 ### Downloading in other languages
 ```bash
-gad -t gersub 'https://s.to/serie/stream/higurashi-no-naku-koro-ni/staffel-1/episode-1'
+gad -t gersub 'https://aniworld.to/anime/stream/yuruyuri-happy-go-lily/staffel-1/episode-1'
 ```
 Either dub or sub:
 ```bash
-gad -t ger 'https://s.to/serie/stream/higurashi-no-naku-koro-ni/staffel-1/episode-1'
-gad -t german 'https://s.to/serie/stream/higurashi-no-naku-koro-ni/staffel-1/episode-1'
+gad -t ger 'https://aniworld.to/anime/stream/higurashi-no-naku-koro-ni/staffel-1/episode-1'
+gad -t german 'https://aniworld.to/anime/stream/higurashi-no-naku-koro-ni/staffel-1/episode-1'
 ```
 If an episode has multiple languages, the general language preference is as follows:
 * English Anime Website: EngSub > EngDub
@@ -97,6 +110,7 @@ Flags:
   -h, --help                     help for gad
       --lang string              Only download specific language
   -p, --priorities string        Extractor priorities (default "*")
+  -q, --queue-file string        Path to the file containing URLs to download
   -r, --rate string              Maximum download rate (default "inf")
   -R, --retries int              Number of download retries (default 5)
   -s, --seasons string           Only download specific seasons
@@ -117,6 +131,9 @@ go build -o gad ./cmd/gad/main.go
 ```
 The resulting executable is found at `gad`.
 
+## Pre-built binaries
+Download from [releases](https://github.com/bugmaschine/gad/releases)
+
 ## Thanks
 * [aniworld_scraper](https://github.com/wolfswolke/aniworld_scraper) for the inspiration and showing how it could be done
-* [sdl](https://github.com/Funami580/sdl) for provinding the original rust codebase and making this fork possible
+* [sdl](https://github.com/Funami580/sdl) for providing the original rust codebase and making this fork possible

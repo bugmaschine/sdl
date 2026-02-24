@@ -28,6 +28,7 @@ type Args struct {
 	Debug               bool
 	Browser             bool
 	Url                 string
+	QueueFile           string
 }
 
 func (a *Args) GetVideoType() downloaders.VideoType {
@@ -230,9 +231,23 @@ func NewRootCommand(args *Args) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gad [URL]",
 		Short: "Download multiple episodes from streaming sites",
-		Args:  cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, cmdArgs []string) error {
+			queueFile, _ := cmd.Flags().GetString("queue-file")
+
+			if len(cmdArgs) == 1 {
+				return nil
+			}
+
+			if queueFile != "" {
+				return nil
+			}
+
+			return fmt.Errorf("you must provide either a URL or --queue-file")
+		},
 		Run: func(cmd *cobra.Command, cmdArgs []string) {
-			args.Url = cmdArgs[0]
+			if len(cmdArgs) == 1 {
+				args.Url = cmdArgs[0]
+			}
 		},
 	}
 
@@ -252,6 +267,7 @@ func NewRootCommand(args *Args) *cobra.Command {
 	f.BoolVar(&args.SkipExisting, "skip-existing", false, "Skip existing files")
 	f.BoolVar(&args.Browser, "browser", false, "Show browser window")
 	f.BoolVarP(&args.Debug, "debug", "d", false, "Enable debug mode")
+	f.StringVarP(&args.QueueFile, "queue-file", "q", "", "Path to the file containing URLs to download")
 
 	return cmd
 }

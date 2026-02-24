@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,6 +79,40 @@ func main() {
 
 	// Chrome management
 	chromeMgr := chrome.NewManager(dataDir, assetDownloader)
+
+	if args.QueueFile != "" {
+		slog.Debug("Queue file specified", "file", args.QueueFile)
+		queueFile, err := os.Open(args.QueueFile)
+		if err != nil {
+			slog.Error("Failed to open queue file", "error", err)
+			os.Exit(1)
+		}
+		defer queueFile.Close()
+
+		scanner := bufio.NewScanner(queueFile)
+		for scanner.Scan() {
+			// basically each row is an url, if it has an hashtag, we ignore it.
+			line := strings.Trim(scanner.Text(), "\n")
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			// For simplicity, we just set the URL and call the handler for each line.
+			args.Url = line
+			slog.Debug("Processing URL from queue", "url", args.Url)
+			// I know that this could be better, but realistically people are only going to use queue with a whole series.
+			// and the download bar might not show all downloads, but who cares? i mean, i'll just have a cron job run it
+			if err := handleSeriesDownload(ctx, args, assetDownloader, chromeMgr, saveDir); err != nil {
+				slog.Error("Failed to handle series download from queue", "error", err, "url", args.Url)
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			slog.Error("Error reading queue file", "error", err)
+			os.Exit(1)
+		}
+
+		slog.Info("Finished processing queue file")
+		os.Exit(0)
+	}
 
 	// Main work
 	if args.Url != "" {
