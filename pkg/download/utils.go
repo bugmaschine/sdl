@@ -85,9 +85,8 @@ func GetEpisodeName(animeName string, videoType *downloaders.VideoType, epInfo *
 		sb.WriteString(" - ")
 	}
 
-	if epInfo.Season > 0 {
-		sb.WriteString(fmt.Sprintf("S%02d", epInfo.Season))
-	}
+	// write season
+	sb.WriteString(fmt.Sprintf("S%02d", epInfo.Season))
 
 	alignment := 2
 	if epInfo.MaxEpisodes > 0 {
@@ -98,6 +97,7 @@ func GetEpisodeName(animeName string, videoType *downloaders.VideoType, epInfo *
 		}
 	}
 
+	// write episode
 	sb.WriteString("E")
 	sb.WriteString(fmt.Sprintf("%0*d", alignment, epInfo.Episode))
 
