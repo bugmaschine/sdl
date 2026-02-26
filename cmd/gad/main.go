@@ -94,7 +94,7 @@ func main() {
 		for scanner.Scan() {
 			// basically each row is an url, if it has an hashtag, we ignore it.
 			line := strings.Trim(scanner.Text(), "\n")
-			slog.Debug("Processing line from queue", "Line", line)
+			slog.Debug("Processing line from queue", "line", line)
 
 			// check if line is valid
 			if line == "" || strings.HasPrefix(line, "#") {
@@ -107,7 +107,7 @@ func main() {
 				line = strings.Split(line, "#")[0]
 				// remove trailing spaces exmample: "https://example.com/series/1 " to "https://example.com/series/1"
 				line = strings.TrimSpace(line)
-				slog.Debug("Removed comment from line", "Line", line)
+				slog.Debug("Removed comment from line", "line", line)
 			}
 
 			// as queue is meant for keeping a library up to date, skip existing is forced to be on.
