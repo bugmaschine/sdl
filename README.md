@@ -27,8 +27,8 @@ gad -q queue.txt
 Queue file contents (you can comment out lines and it will be ignored):
 ```
 https://aniworld.to/anime/stream/you-and-i-are-polar-opposites
-#https://aniworld.to/anime/stream/spy-x-family
-https://aniworld.to/anime/stream/yuruyuri-happy-go-lily
+#https://aniworld.to/anime/stream/spy-x-family # comment out shows like this
+https://aniworld.to/anime/stream/yuruyuri-happy-go-lily # this is an example of another comment
 ```
 
 ### Downloading a single episode

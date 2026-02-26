@@ -94,14 +94,27 @@ func main() {
 		for scanner.Scan() {
 			// basically each row is an url, if it has an hashtag, we ignore it.
 			line := strings.Trim(scanner.Text(), "\n")
+			slog.Debug("Processing line from queue", "Line", line)
+
+			// check if line is valid
 			if line == "" || strings.HasPrefix(line, "#") {
+				slog.Debug("Skipping invalid line", "line", line)
 				continue
 			}
+
+			if strings.Contains(line, "#") {
+				// remove comments at the end exmample: "https://example.com/series/1 # this is a comment" to "https://example.com/series/1 "
+				line = strings.Split(line, "#")[0]
+				// remove trailing spaces exmample: "https://example.com/series/1 " to "https://example.com/series/1"
+				line = strings.TrimSpace(line)
+				slog.Debug("Removed comment from line", "Line", line)
+			}
+
 			// as queue is meant for keeping a library up to date, skip existing is forced to be on.
 			args.SkipExisting = true
 			// For simplicity, we just set the URL and call the handler for each line.
 			args.Url = line
-			slog.Debug("Processing URL from queue", "url", args.Url)
+			slog.Info("Processing URL from queue", "url", args.Url)
 			// I know that this could be better, but realistically people are only going to use queue with a whole series.
 			// and the download bar might not show all downloads, but who cares? i mean, i'll just have a cron job run it
 			if err := handleSeriesDownload(ctx, args, assetDownloader, chromeMgr, saveDir); err != nil {
