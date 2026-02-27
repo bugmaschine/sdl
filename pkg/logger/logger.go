@@ -78,16 +78,30 @@ func (h *CustomHandler) WithGroup(name string) slog.Handler {
 }
 
 // InitDefaultLogger initializes the global logger with the specified debug level.
-func InitDefaultLogger(debug bool) {
+func InitDefaultLogger(debug bool, logFilePath string) {
 	level := slog.LevelInfo
 	if debug {
 		level = slog.LevelDebug
 	}
 
-	handler := NewCustomHandler(os.Stderr, slog.HandlerOptions{
+	var writer io.Writer = os.Stderr
+
+	// only write to file if user set logfile path
+	if logFilePath != "" {
+		// os.O_APPEND: Add to the end of the file
+		// os.O_CREATE: Create it if it doesn't exist
+		// os.O_WRONLY: Open for writing only
+		f, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to open log file: %v\n", err)
+		} else {
+			writer = io.MultiWriter(os.Stderr, f)
+		}
+	}
+
+	handler := NewCustomHandler(writer, slog.HandlerOptions{
 		Level: level,
 	})
 
-	logger := slog.New(handler)
-	slog.SetDefault(logger)
+	slog.SetDefault(slog.New(handler))
 }

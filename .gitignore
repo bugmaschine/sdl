@@ -3,3 +3,4 @@
 *.ts
 /gad
 queue.txt
+gad.log

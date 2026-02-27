@@ -33,7 +33,7 @@ func main() {
 	}
 
 	// Set up logger
-	logger.InitDefaultLogger(args.Debug)
+	logger.InitDefaultLogger(args.Debug, args.LogFile)
 
 	slog.Info("gad started")
 
