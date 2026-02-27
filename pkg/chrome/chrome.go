@@ -9,7 +9,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/bugmaschine/gad/pkg/download"
@@ -20,6 +22,16 @@ import (
 const (
 	UblockGithubAPIURL        = "https://api.github.com/repos/uBlockOrigin/uBOL-home/releases/latest"
 	UblockFallbackDownloadURL = "https://github.com/uBlockOrigin/uBOL-home/releases/download/2026.215.1801/uBOLite_2026.215.1801.chromium.zip"
+)
+
+const (
+	ChromiumBaseURL = "https://www.googleapis.com/download/storage/v1/b/chromium-browser-snapshots/o/%s%%2F%s%%2F%s?alt=media"
+	LastChangeURL   = "https://www.googleapis.com/download/storage/v1/b/chromium-browser-snapshots/o/%s%%2FLAST_CHANGE?alt=media"
+)
+
+var (
+	checkedForUblockUpdates = false
+	checkedForChromeUpdates = false
 )
 
 // Downloader matches the interface needed for uBlock download.
@@ -41,23 +53,30 @@ func NewManager(dataDir string, downloader Downloader) *ChromeManager {
 
 // Get initializes a chromedp context with uBlock Origin and anti-automation patches.
 func (m *ChromeManager) Get(ctx context.Context, headless, debug bool) (context.Context, context.CancelFunc, error) {
+	chromeExecPath, err := m.prepareChromium()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to prepare chromium: %w", err)
+	}
+
 	ublockDir := filepath.Join(m.dataDir, "uBlock")
 	if err := m.prepareUblock(ctx, ublockDir); err != nil {
 		slog.Warn("Failed to prepare uBlock Origin, proceeding without it", "error", err)
 	}
 
 	opts := []chromedp.ExecAllocatorOption{
+		chromedp.ExecPath(chromeExecPath),
 		chromedp.NoDefaultBrowserCheck,
 		chromedp.NoFirstRun,
 		chromedp.DisableGPU, // Safer across platforms
 	}
 
-	if headless {
-		opts = append(opts, chromedp.Headless)
+	if headless && !debug {
+		// apparently the new headless mode is good??
+		opts = append(opts, chromedp.Flag("headless", "new"))
 	}
 
 	opts = append(opts,
-		//chromedp.Flag("no-sandbox", true), // this is absolutely dangerous
+		//chromedp.Flag("no-sandbox", true), // this is absolutely dangerous. i think sdl did this for performance reasons.
 		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.Flag("disable-blink-features", "AutomationControlled"),
 		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"),
@@ -119,11 +138,117 @@ func (m *ChromeManager) Get(ctx context.Context, headless, debug bool) (context.
 	return taskCtx, combinedCancel, nil
 }
 
+func (m *ChromeManager) prepareChromium() (string, error) {
+	// check if chromium is installed locally
+	for _, bin := range []string{"chromium", "chromium-browser", "google-chrome", "google-chrome-stable"} {
+		if path, err := exec.LookPath(bin); err == nil {
+			slog.Debug("Using system chromium", "path", path)
+			return path, nil
+		}
+	}
+
+	platform, zipName, execRelPath := getPlatformInfo()
+	chromeDir := filepath.Join(m.dataDir, "chromium_bin")
+	fullExecPath := filepath.Join(chromeDir, execRelPath)
+	versionFile := filepath.Join(m.dataDir, "current_chromium_version")
+
+	if checkedForChromeUpdates {
+		if _, err := os.Stat(fullExecPath); err == nil {
+			return fullExecPath, nil
+		}
+	}
+
+	slog.Debug("Checking for Chromium snapshot updates...")
+
+	// ask google for the latest revision
+	resp, err := http.Get(fmt.Sprintf(LastChangeURL, platform))
+	var latestRevision string
+	if err == nil {
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		latestRevision = strings.TrimSpace(string(body))
+	} else {
+		slog.Warn("Failed to fetch latest Chromium revision", "error", err)
+	}
+
+	// check if we already have the latest version
+	currentVersionBytes, _ := os.ReadFile(versionFile)
+	currentRevision := strings.TrimSpace(string(currentVersionBytes))
+
+	if latestRevision != "" && currentRevision == latestRevision {
+		if _, err := os.Stat(fullExecPath); err == nil {
+			checkedForChromeUpdates = true
+			return fullExecPath, nil
+		}
+	}
+
+	// If network failed but we have an existing installation, use it as fallback
+	if latestRevision == "" {
+		if _, err := os.Stat(fullExecPath); err == nil {
+			slog.Warn("Could not check for Chromium updates, using existing installation")
+			checkedForChromeUpdates = true
+			return fullExecPath, nil
+		}
+		return "", fmt.Errorf("chromium not found and could not fetch latest revision")
+	}
+
+	slog.Info("Downloading chromium...", "revision", latestRevision)
+
+	// download from google
+	downloadURL := fmt.Sprintf(ChromiumBaseURL, platform, latestRevision, zipName)
+	tmpZip := filepath.Join(m.dataDir, "chrome_temp.zip")
+
+	task := download.NewDownloadTask(downloadURL, tmpZip).
+		SetOverwriteFile(true).
+		SetCustomMessage("Downloading Chromium")
+	task.OutputPathHasExtension = true
+
+	if err := m.downloader.DownloadToFile(context.Background(), task); err != nil {
+		return "", err
+	}
+	defer os.Remove(tmpZip)
+
+	// clean up
+	_ = os.RemoveAll(chromeDir)
+	if err := m.unzip(tmpZip, chromeDir); err != nil {
+		return "", err
+	}
+
+	// set execute stuff
+	if runtime.GOOS != "windows" {
+		os.Chmod(fullExecPath, 0755)
+	}
+
+	// save revision
+	_ = os.WriteFile(versionFile, []byte(latestRevision), 0644)
+	checkedForChromeUpdates = true
+
+	return fullExecPath, nil
+}
+
+// getPlatformInfo returns (PlatformSegment, ZipName, ExecutableSubPath)
+func getPlatformInfo() (string, string, string) {
+	switch runtime.GOOS {
+	case "windows":
+		return "Win_x64", "chrome-win.zip", filepath.Join("chrome-win", "chrome.exe")
+	case "darwin":
+		return "Mac", "chrome-mac.zip", filepath.Join("chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium")
+	default: // Linux
+		return "Linux_x64", "chrome-linux.zip", filepath.Join("chrome-linux", "chrome")
+	}
+}
+
 func (m *ChromeManager) prepareUblock(ctx context.Context, ublockDir string) error {
 	versionFile := filepath.Join(m.dataDir, "current_ublock_version")
 
 	currentVersionBytes, _ := os.ReadFile(versionFile)
 	currentVersion := strings.TrimSpace(string(currentVersionBytes))
+	slog.Debug("local uBlock version", "version", currentVersion)
+
+	// if we have a version locally, and already checked for updates, we can skip the check. (i had the issue of the github api blocking me)
+	if currentVersion != "" && checkedForUblockUpdates == true {
+		return nil
+	}
 
 	latestTag, downloadURL, err := m.fetchLatestUblockInfo()
 	if err != nil {
@@ -135,6 +260,7 @@ func (m *ChromeManager) prepareUblock(ctx context.Context, ublockDir string) err
 	if currentVersion != "" && currentVersion == latestTag && latestTag != "fallback" {
 		if _, err := os.Stat(ublockDir); err == nil {
 			slog.Debug("uBlock Origin up-to-date", "version", latestTag)
+			checkedForUblockUpdates = true
 			return nil
 		}
 	}
@@ -178,6 +304,7 @@ func (m *ChromeManager) prepareUblock(ctx context.Context, ublockDir string) err
 	}
 
 	_ = os.WriteFile(versionFile, []byte(latestTag), 0644)
+	checkedForUblockUpdates = true
 	return nil
 }
 
