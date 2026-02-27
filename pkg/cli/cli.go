@@ -29,6 +29,7 @@ type Args struct {
 	Browser             bool
 	Url                 string
 	QueueFile           string
+	OutputFolder        string
 }
 
 func (a *Args) GetVideoType() downloaders.VideoType {
@@ -268,6 +269,6 @@ func NewRootCommand(args *Args) *cobra.Command {
 	f.BoolVar(&args.Browser, "browser", false, "Show browser window")
 	f.BoolVarP(&args.Debug, "debug", "d", false, "Enable debug mode")
 	f.StringVarP(&args.QueueFile, "queue-file", "q", "", "Path to the file containing URLs to download")
-
+	f.StringVarP(&args.OutputFolder, "output-folder", "o", "downloads", "In queue mode, each series will get an own folder inside it. In default mode it gets used as save directory directly.")
 	return cmd
 }

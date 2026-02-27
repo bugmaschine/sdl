@@ -45,7 +45,7 @@ func main() {
 	}
 
 	// Get save directory
-	saveDir, err := dirs.GetSaveDirectory("") // Change to args if added
+	saveDir, err := dirs.GetSaveDirectory(args.OutputFolder)
 	if err != nil {
 		slog.Error("Failed to get save directory", "error", err)
 		os.Exit(1)
@@ -178,11 +178,12 @@ func handleSeriesDownload(ctx context.Context, args *cli.Args, d *download.Downl
 	}
 	slog.Info("Series", "title", info.Title)
 
+	// maybe make this an option, idk.
 	if args.QueueFile != "" {
 		slog.Debug("Queue file there, doing special stuff")
 		folderName := utils.CleanFolderName(info.Title)
 		// maybe allow setting a custom folder name. but i'm too lazy for now.
-		saveDir = filepath.Join(saveDir, "downloads", folderName)
+		saveDir = filepath.Join(saveDir, folderName)
 		slog.Info("Saving to", "directory", saveDir)
 
 		if err := os.MkdirAll(saveDir, 0755); err != nil {
